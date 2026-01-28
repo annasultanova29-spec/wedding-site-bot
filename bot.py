@@ -4,17 +4,23 @@ import sqlite3
 import datetime
 import os
 import logging
+from flask import Flask
+import threading
 
 # Настройка логирования
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 # === ВАШИ ДАННЫЕ ===
-TOKEN = "8496935356:AAF3UOHTXykrqK6-nOeVFpAPCtewst-02PA"  # Ваш токен
-ADMIN_CHAT_ID = "787419978"  # Ваш личный Chat ID
-GROUP_CHAT_ID = "-5275786758"  # Chat ID группы "заявки сайт"
+TOKEN = "8496935356:AAF3UOHTXykrqK6-nOeVFpAPCtewst-02PA"
+ADMIN_CHAT_ID = "787419978"
+GROUP_CHAT_ID = "-5275786758"
 
 bot = telebot.TeleBot(TOKEN)
+app = Flask(__name__)
 
 # База данных
 def init_db():
@@ -40,7 +46,7 @@ def send_welcome(message):
     username = message.from_user.username
     logger.info(f"👤 Пользователь {user_id} (@{username}) начал диалог")
     
-    # Если переход с сайта (с кнопки "Заказать сайт")
+    # Если переход с сайта
     if len(message.text.split()) > 1:
         param = message.text.split()[1]
         if param == 'siteorder':
@@ -56,13 +62,12 @@ def send_welcome(message):
     btn_price = types.KeyboardButton('💰 Стоимость')
     markup.add(btn_order, btn_privacy, btn_examples, btn_price)
     
-    welcome_text = """
-🎉 *Добро пожаловать!*
+    welcome_text = """🎉 Добро пожаловать!
 
 Я Анна, и я создаю свадебные сайты-приглашения 
-*такие же, как у Татьяны и Александра!*
+такие же, как у Татьяны и Александра!
 
-✨ *Что входит в сайт:*
+✨ Что входит в сайт:
 • Адаптивный дизайн (для телефонов и компьютеров)
 • Таймер обратного отсчета
 • Анкета для гостей (RSVP)
@@ -71,14 +76,12 @@ def send_welcome(message):
 • Карты и контакты
 • Фоновая музыка и видео
 
-⏱ *Срок создания:* 2-3 дня
-💝 *Стоимость:* от 5000 рублей
+⏱ Срок создания: 2-3 дня
+💝 Стоимость: от 5000 рублей
 
-*Выберите действие:* ⬇️
-"""
+Выберите действие: ⬇️"""
     
-    bot.send_message(message.chat.id, welcome_text, 
-                    parse_mode='Markdown', reply_markup=markup)
+    bot.send_message(message.chat.id, welcome_text, reply_markup=markup)
 
 # Главное меню
 @bot.message_handler(func=lambda message: message.text in [
@@ -97,12 +100,11 @@ def handle_main_menu(message):
 def start_order(message):
     msg = bot.send_message(
         message.chat.id,
-        "📋 *АНКЕТА ДЛЯ ЗАКАЗА*\n\n"
+        "📋 АНКЕТА ДЛЯ ЗАКАЗА\n\n"
         "Заполните 4 простых поля, и я свяжусь с вами "
-        "*в течение 24 часов!*\n\n"
-        "🔹 *Шаг 1 из 4*\n"
-        "Напишите ваше *имя и фамилию:*",
-        parse_mode='Markdown',
+        "в течение 24 часов!\n\n"
+        "🔹 Шаг 1 из 4\n"
+        "Напишите ваше имя и фамилию:",
         reply_markup=types.ReplyKeyboardRemove()
     )
     bot.register_next_step_handler(msg, process_name_step)
@@ -127,11 +129,10 @@ def process_name_step(message):
         
         msg = bot.send_message(
             message.chat.id,
-            f"👤 *Имя:* {name}\n\n"
-            "🔹 *Шаг 2 из 4*\n"
-            "*Нажмите кнопку ниже*, чтобы поделиться номером телефона, "
-            "или напишите номер *вручную* (в формате +7 XXX XXX-XX-XX):",
-            parse_mode='Markdown',
+            f"👤 Имя: {name}\n\n"
+            "🔹 Шаг 2 из 4\n"
+            "Нажмите кнопку ниже, чтобы поделиться номером телефона, "
+            "или напишите номер вручную (в формате +7 XXX XXX-XX-XX):",
             reply_markup=markup
         )
         bot.register_next_step_handler(msg, process_phone_step, user_data)
@@ -142,7 +143,6 @@ def process_name_step(message):
 
 @bot.message_handler(content_types=['contact'])
 def handle_contact(message):
-    # Этот обработчик сработает, если нажали кнопку "Поделиться телефоном"
     if hasattr(message, 'contact') and message.contact:
         phone = message.contact.phone_number
         user_data = {
@@ -177,11 +177,10 @@ def ask_telegram(message, user_data):
     
     msg = bot.send_message(
         message.chat.id,
-        f"📱 *Телефон:* {user_data['phone']}\n\n"
-        "🔹 *Шаг 3 из 4*\n"
-        "Укажите ваш *Telegram username* (например, @username):\n"
-        "_Можно пропустить, нажав кнопку ниже_",
-        parse_mode='Markdown',
+        f"📱 Телефон: {user_data['phone']}\n\n"
+        "🔹 Шаг 3 из 4\n"
+        "Укажите ваш Telegram username (например, @username):\n"
+        "Можно пропустить, нажав кнопку ниже",
         reply_markup=markup
     )
     bot.register_next_step_handler(msg, process_telegram_step, user_data)
@@ -203,10 +202,9 @@ def process_telegram_step(message, user_data):
         
         msg = bot.send_message(
             message.chat.id,
-            f"📲 *Telegram:* {telegram}\n\n"
-            "🔹 *Шаг 4 из 4*\n"
-            "Выберите *год свадьбы:*",
-            parse_mode='Markdown',
+            f"📲 Telegram: {telegram}\n\n"
+            "🔹 Шаг 4 из 4\n"
+            "Выберите год свадьбы:",
             reply_markup=markup
         )
         bot.register_next_step_handler(msg, process_date_step, user_data)
@@ -218,29 +216,27 @@ def process_date_step(message, user_data):
         wedding_date = message.text.strip()
         user_data['wedding_date'] = wedding_date
         
-        # Запрашиваем согласие
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
         markup.add(
             types.KeyboardButton('✅ Да, согласен'),
             types.KeyboardButton('❌ Нет, отменить')
         )
         
-        summary = f"""
-📋 *ПРОВЕРЬТЕ ВАШИ ДАННЫЕ:*\n
-👤 *Имя:* {user_data['name']}
-📱 *Телефон:* {user_data['phone']}
-📲 *Telegram:* {user_data['telegram']}
-📅 *Год свадьбы:* {wedding_date}\n
-🔒 *СОГЛАСИЕ НА ОБРАБОТКУ ДАННЫХ:*
+        summary = f"""📋 ПРОВЕРЬТЕ ВАШИ ДАННЫЕ:
+
+👤 Имя: {user_data['name']}
+📱 Телефон: {user_data['phone']}
+📲 Telegram: {user_data['telegram']}
+📅 Год свадьбы: {wedding_date}
+
+🔒 СОГЛАСИЕ НА ОБРАБОТКУ ДАННЫХ:
 Я согласен на обработку моих персональных данных 
 в соответствии с Федеральным законом №152-ФЗ 
-для связи и обсуждения заказа.\n
-*Подтверждаете отправку заявки?*
-"""
+для связи и обсуждения заказа.
+
+Подтверждаете отправку заявки?"""
         
-        bot.send_message(message.chat.id, summary, 
-                        parse_mode='Markdown', reply_markup=markup)
-        
+        bot.send_message(message.chat.id, summary, reply_markup=markup)
         bot.register_next_step_handler(message, process_consent_step, user_data)
     except Exception as e:
         logger.error(f"❌ Ошибка в дате: {e}")
@@ -248,31 +244,25 @@ def process_date_step(message, user_data):
 def process_consent_step(message, user_data):
     try:
         if message.text == '✅ Да, согласен':
-            # Сохраняем заказ
             save_order(user_data)
-            
-            # Уведомляем админа (вас)
             notify_admin(user_data, message.from_user.username)
             
-            # Благодарим пользователя
-            success_text = f"""
-🎉 *{user_data['name']}, ВАША ЗАЯВКА ПРИНЯТА!*\n
+            success_text = f"""🎉 {user_data['name']}, ВАША ЗАЯВКА ПРИНЯТА!
+
 ✅ Спасибо за доверие!
-⏱ Я свяжусь с вами *в течение 24 часов*.\n
-📞 *Мои контакты для связи:*
+⏱ Я свяжусь с вами в течение 24 часов.
+
+📞 Мои контакты для связи:
 Telegram: @ami_sultanova
-_До скорой встречи!_ ✨
-"""
-            bot.send_message(message.chat.id, success_text, 
-                           parse_mode='Markdown',
-                           reply_markup=types.ReplyKeyboardRemove())
+До скорой встречи! ✨"""
             
-            logger.info(f"✅ Новый заказ от {user_data['name']} ({user_data['phone']})")
+            bot.send_message(message.chat.id, success_text, 
+                           reply_markup=types.ReplyKeyboardRemove())
+            logger.info(f"✅ Новый заказ от {user_data['name']}")
         else:
             bot.send_message(message.chat.id,
-                           "❌ *Заказ отменен.*\n\n"
+                           "❌ Заказ отменен.\n\n"
                            "Если передумаете — нажмите /start",
-                           parse_mode='Markdown',
                            reply_markup=types.ReplyKeyboardRemove())
     except Exception as e:
         logger.error(f"❌ Ошибка подтверждения: {e}")
@@ -297,91 +287,82 @@ def notify_admin(data, username):
     try:
         timestamp = datetime.datetime.now().strftime('%H:%M %d.%m.%Y')
         
-        message = f"""
-🎯 *НОВЫЙ ЗАКАЗ САЙТА!*
+        message = f"""🎯 НОВЫЙ ЗАКАЗ САЙТА!
 
-👤 *Имя:* {data['name']}
-📱 *Телефон:* {data['phone']}
-📲 *Telegram:* {data['telegram']}
-📅 *Год свадьбы:* {data['wedding_date']}
-🆔 *Username:* @{username if username else 'нет'}
-🆔 *User ID:* {data['user_id']}
-⏰ *Время:* {timestamp}
+👤 Имя: {data['name']}
+📱 Телефон: {data['phone']}
+📲 Telegram: {data['telegram']}
+📅 Год свадьбы: {data['wedding_date']}
+🆔 Username: @{username if username else 'нет'}
+🆔 User ID: {data['user_id']}
+⏰ Время: {timestamp}
 
-#заказ_сайт
-"""
+#заказ_сайт"""
         
-        # Отправляем в группу
-        bot.send_message(GROUP_CHAT_ID, message, parse_mode='Markdown')
-        
-        # Отправляем вам лично
-        bot.send_message(ADMIN_CHAT_ID, message, parse_mode='Markdown')
+        # Отправляем в группу и админу БЕЗ Markdown
+        bot.send_message(GROUP_CHAT_ID, message)
+        bot.send_message(ADMIN_CHAT_ID, message)
         
         logger.info(f"📨 Уведомления отправлены")
     except Exception as e:
         logger.error(f"❌ Ошибка уведомления: {e}")
 
 def send_privacy(message):
-    privacy_text = """
-🔒 *ПОЛИТИКА КОНФИДЕНЦИАЛЬНОСТИ*
+    privacy_text = """🔒 ПОЛИТИКА КОНФИДЕНЦИАЛЬНОСТИ
 
-*1. Общие положения*
+1. Общие положения
 Мы соблюдаем требования Федерального закона №152-ФЗ 
 "О персональных данных".
 
-*2. Какие данные собираем:*
+2. Какие данные собираем:
 • Имя и фамилия
 • Номер телефона
 • Telegram username
 • Планируемая дата свадьбы
 
-*3. Для чего используем:*
+3. Для чего используем:
 • Для связи с вами
 • Для обсуждения деталей заказа
 • Для подготовки коммерческого предложения
 
-*4. Срок хранения:*
+4. Срок хранения:
 6 месяцев с момента получения
 
-*5. Ваши права:*
+5. Ваши права:
 • Право на доступ к данным
 • Право на исправление
 • Право на удаление данных
 • Право на отзыв согласия
 
-*6. Контакты:*
+6. Контакты:
 По вопросам обработки данных обращайтесь:
-Telegram: @ami_sultanova
-"""
-    bot.send_message(message.chat.id, privacy_text, parse_mode='Markdown')
+Telegram: @ami_sultanova"""
+    bot.send_message(message.chat.id, privacy_text)
 
 def send_examples(message):
-    examples_text = """
-✨ *ПРИМЕРЫ РАБОТ:*
+    examples_text = """✨ ПРИМЕРЫ РАБОТ:
 
-1. *Свадьба Татьяны и Александра*
+1. Свадьба Татьяны и Александра
    (пример, который вы видели)
 
-2. *Свадьба в стиле "Винтаж"*
+2. Свадьба в стиле "Винтаж"
    - Пастельные тона
    - Старинные фотографии
    - Классическая музыка
 
-3. *Современная свадьба*
+3. Современная свадьба
    - Яркие цвета
    - Анимации
    - Интерактивные элементы
 
-*Каждый сайт уникален!* 
-Я создам дизайн специально под вашу пару.
-"""
-    bot.send_message(message.chat.id, examples_text, parse_mode='Markdown')
+Каждый сайт уникален! 
+Я создам дизайн специально под вашу пару."""
+    bot.send_message(message.chat.id, examples_text)
 
 def send_price(message):
-    price_text = """
-💰 *СТОИМОСТЬ И УСЛУГИ:*
+    price_text = """💰 СТОИМОСТЬ И УСЛУГИ:
 
-*БАЗОВЫЙ ПАКЕТ (5000 руб.):*
+БАЗОВЫЙ ПАКЕТ (5000 руб.):
 ✅ Адаптивный дизайн
 ✅ 6 основных разделов
 ✅ Форма для гостей
@@ -389,7 +370,7 @@ def send_price(message):
 ✅ До 20 фотографий
 ✅ Поддержка 7 дней
 
-*ПРЕМИУМ ПАКЕТ (8000 руб.):*
+ПРЕМИУМ ПАКЕТ (8000 руб.):
 ✅ Всё из базового пакета
 ✅ Видео-фон на главной
 ✅ Анимации и эффекты
@@ -397,14 +378,13 @@ def send_price(message):
 ✅ Индивидуальный дизайн
 ✅ Поддержка 30 дней
 
-*СРОКИ:*
+СРОКИ:
 • Базовая версия: 2-3 дня
 • Премиум версия: 3-5 дней
 
-*ОПЛАТА:*
-50% предоплата, 50% после готовности
-"""
-    bot.send_message(message.chat.id, price_text, parse_mode='Markdown')
+ОПЛАТА:
+50% предоплата, 50% после готовности"""
+    bot.send_message(message.chat.id, price_text)
 
 # Обработка остальных сообщений
 @bot.message_handler(func=lambda message: True)
@@ -422,6 +402,16 @@ def handle_other_messages(message):
         "/privacy - политика"
     )
 
+# Flask маршрут для Render
+@app.route('/')
+def home():
+    return "🤖 Бот работает! Telegram: @wedding_site_orders_bot"
+
+# Функция запуска Flask
+def run_flask():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
+
 if __name__ == '__main__':
     logger.info("🚀 Бот запускается...")
     logger.info(f"🤖 Токен: {TOKEN[:10]}...")
@@ -430,8 +420,12 @@ if __name__ == '__main__':
     
     init_db()
     
+    # Запускаем Flask в отдельном потоке
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.daemon = True
+    flask_thread.start()
+    
     try:
         bot.polling(none_stop=True, interval=0, timeout=60)
     except Exception as e:
         logger.error(f"❌ Ошибка запуска бота: {e}")
-        print(f"КРИТИЧЕСКАЯ ОШИБКА: {e}")
