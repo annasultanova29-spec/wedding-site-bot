@@ -4,8 +4,6 @@ import sqlite3
 import datetime
 import os
 import logging
-from flask import Flask
-import threading
 
 # Настройка логирования
 logging.basicConfig(
@@ -20,7 +18,6 @@ ADMIN_CHAT_ID = "787419978"
 GROUP_CHAT_ID = "-5275786758"
 
 bot = telebot.TeleBot(TOKEN)
-app = Flask(__name__)
 
 # База данных
 def init_db():
@@ -287,6 +284,7 @@ def notify_admin(data, username):
     try:
         timestamp = datetime.datetime.now().strftime('%H:%M %d.%m.%Y')
         
+        # ВАЖНО: Убрать ВСЕ Markdown символы (*, _, `, # и т.д.)
         message = f"""🎯 НОВЫЙ ЗАКАЗ САЙТА!
 
 👤 Имя: {data['name']}
@@ -297,11 +295,11 @@ def notify_admin(data, username):
 🆔 User ID: {data['user_id']}
 ⏰ Время: {timestamp}
 
-#заказ_сайт"""
+заказсайт"""  # Убрал # чтобы не было проблем
         
-        # Отправляем в группу и админу БЕЗ Markdown
-        bot.send_message(GROUP_CHAT_ID, message)
-        bot.send_message(ADMIN_CHAT_ID, message)
+        # Отправляем БЕЗ parse_mode
+        bot.send_message(GROUP_CHAT_ID, message, parse_mode=None)
+        bot.send_message(ADMIN_CHAT_ID, message, parse_mode=None)
         
         logger.info(f"📨 Уведомления отправлены")
     except Exception as e:
@@ -337,7 +335,7 @@ def send_privacy(message):
 6. Контакты:
 По вопросам обработки данных обращайтесь:
 Telegram: @ami_sultanova"""
-    bot.send_message(message.chat.id, privacy_text)
+    bot.send_message(message.chat.id, privacy_text, parse_mode=None)
 
 def send_examples(message):
     examples_text = """✨ ПРИМЕРЫ РАБОТ:
@@ -357,7 +355,7 @@ def send_examples(message):
 
 Каждый сайт уникален! 
 Я создам дизайн специально под вашу пару."""
-    bot.send_message(message.chat.id, examples_text)
+    bot.send_message(message.chat.id, examples_text, parse_mode=None)
 
 def send_price(message):
     price_text = """💰 СТОИМОСТЬ И УСЛУГИ:
@@ -384,7 +382,7 @@ def send_price(message):
 
 ОПЛАТА:
 50% предоплата, 50% после готовности"""
-    bot.send_message(message.chat.id, price_text)
+    bot.send_message(message.chat.id, price_text, parse_mode=None)
 
 # Обработка остальных сообщений
 @bot.message_handler(func=lambda message: True)
@@ -399,18 +397,9 @@ def handle_other_messages(message):
         "Или команды:\n"
         "/start - перезапустить бота\n"
         "/order - заказать сайт\n"
-        "/privacy - политика"
+        "/privacy - политика",
+        parse_mode=None
     )
-
-# Flask маршрут для Render
-@app.route('/')
-def home():
-    return "🤖 Бот работает! Telegram: @wedding_site_orders_bot"
-
-# Функция запуска Flask
-def run_flask():
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port)
 
 if __name__ == '__main__':
     logger.info("🚀 Бот запускается...")
@@ -420,10 +409,24 @@ if __name__ == '__main__':
     
     init_db()
     
-    # Запускаем Flask в отдельном потоке
-    flask_thread = threading.Thread(target=run_flask)
-    flask_thread.daemon = True
-    flask_thread.start()
+    # Для Render - простой веб-сервер
+    try:
+        from flask import Flask
+        app = Flask(__name__)
+        
+        @app.route('/')
+        def home():
+            return "🤖 Бот работает!"
+        
+        import threading
+        def run_flask():
+            app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
+        
+        flask_thread = threading.Thread(target=run_flask)
+        flask_thread.daemon = True
+        flask_thread.start()
+    except ImportError:
+        pass
     
     try:
         bot.polling(none_stop=True, interval=0, timeout=60)
