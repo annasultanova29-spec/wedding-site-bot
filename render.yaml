@@ -5,6 +5,8 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: python bot.py
     envVars:
+      - key: PORT
+        value: 10000
       - key: TOKEN
         value: "8496935356:AAF3UOHTXykrqK6-nOeVFpAPCtewst-02PA"
       - key: ADMIN_CHAT_ID
