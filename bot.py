@@ -16,20 +16,21 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 # ========== ВАШИ ДАННЫЕ ==========
-# Если переменные окружения не установлены, используем эти значения
 TOKEN = os.environ.get('TELEGRAM_TOKEN', '8496935356:AAF3UOHTXykrqK6-nOeVFpAPCtewst-02PA')
 ADMIN_CHAT_ID = os.environ.get('ADMIN_CHAT_ID', '787419978')
 PORT = os.environ.get('PORT', '10000')
 # =================================
 
-# Проверка токена
-if not TOKEN or TOKEN == 'ваш_токен_здесь':
-    logger.error("❌ Токен бота не найден! Проверьте переменную TELEGRAM_TOKEN")
-    exit(1)
+# Получаем URL Render
+RENDER_EXTERNAL_URL = os.environ.get('RENDER_EXTERNAL_URL', '')
+if not RENDER_EXTERNAL_URL:
+    # Формируем URL из имени сервиса
+    service_name = os.environ.get('RENDER_SERVICE_NAME', 'wedding-site-bot')
+    RENDER_EXTERNAL_URL = f"https://{service_name}.onrender.com"
 
-logger.info(f"✅ Токен бота: {TOKEN[:10]}...")
-logger.info(f"✅ ID администратора: {ADMIN_CHAT_ID}")
-logger.info(f"✅ Порт: {PORT}")
+logger.info(f"✅ URL: {RENDER_EXTERNAL_URL}")
+logger.info(f"✅ Токен: {TOKEN[:10]}...")
+logger.info(f"✅ Админ: {ADMIN_CHAT_ID}")
 
 # Инициализация бота
 bot = telebot.TeleBot(TOKEN)
@@ -37,7 +38,7 @@ bot = telebot.TeleBot(TOKEN)
 # Глобальные переменные для хранения данных пользователей
 user_data = {}
 
-# Клавиатура для выбора услуги
+# ========== КЛАВИАТУРЫ ==========
 def create_service_keyboard():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     btn1 = types.KeyboardButton('Создание сайта')
@@ -47,7 +48,6 @@ def create_service_keyboard():
     markup.add(btn1, btn2, btn3, btn4)
     return markup
 
-# Клавиатура для контактов
 def create_contact_keyboard():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
     btn_contact = types.KeyboardButton('📱 Отправить контакт', request_contact=True)
@@ -55,7 +55,6 @@ def create_contact_keyboard():
     markup.add(btn_contact, btn_cancel)
     return markup
 
-# Обычная клавиатура
 def create_main_keyboard():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     btn_order = types.KeyboardButton('🎉 Оформить заказ')
@@ -64,17 +63,16 @@ def create_main_keyboard():
     markup.add(btn_order, btn_contact, btn_about)
     return markup
 
-# Функция для безопасной отправки сообщений
+# ========== ФУНКЦИИ ==========
 def safe_send_message(chat_id, text, reply_markup=None):
     try:
         bot.send_message(chat_id, text, reply_markup=reply_markup, parse_mode=None)
-        logger.info(f"✅ Сообщение отправлено пользователю {chat_id}")
+        logger.info(f"✅ Сообщение отправлено {chat_id}")
         return True
     except Exception as e:
-        logger.error(f"❌ Ошибка отправки: {e}")
+        logger.error(f"❌ Ошибка: {e}")
         return False
 
-# Функция для отправки уведомления администратору
 def send_to_admin(user_id, username, service, contact, details=""):
     try:
         message = f"""
@@ -90,13 +88,13 @@ def send_to_admin(user_id, username, service, contact, details=""):
         """
         
         bot.send_message(ADMIN_CHAT_ID, message, parse_mode=None)
-        logger.info(f"✅ Уведомление отправлено администратору {ADMIN_CHAT_ID}")
+        logger.info(f"✅ Уведомление отправлено администратору")
         return True
     except Exception as e:
-        logger.error(f"❌ Ошибка отправки администратору: {e}")
+        logger.error(f"❌ Ошибка отправки: {e}")
         return False
 
-# Обработчик команды /start
+# ========== ОБРАБОТЧИКИ ==========
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     user_id = message.from_user.id
@@ -106,17 +104,14 @@ def send_welcome(message):
     welcome_text = """
 🎉 Добро пожаловать в Wedding Site Bot!
 
-Я помогу вам создать идеальный свадебный сайт.
-
 Выберите действие:
-🎉 Оформить заказ - оставить заявку на создание сайта
+🎉 Оформить заказ - оставить заявку
 📞 Контакты - связаться с нами
-ℹ️ О нас - узнать подробнее о наших услугах
+ℹ️ О нас - узнать подробнее
     """
     
     safe_send_message(message.chat.id, welcome_text, create_main_keyboard())
 
-# Обработчик кнопки "Оформить заказ"
 @bot.message_handler(func=lambda message: message.text == '🎉 Оформить заказ')
 def start_order(message):
     user_id = message.from_user.id
@@ -125,11 +120,8 @@ def start_order(message):
         user_data[user_id] = {}
     
     user_data[user_id]['step'] = 'choose_service'
-    
-    text = "🎯 Выберите услугу:"
-    safe_send_message(message.chat.id, text, create_service_keyboard())
+    safe_send_message(message.chat.id, "🎯 Выберите услугу:", create_service_keyboard())
 
-# Обработчик выбора услуги
 @bot.message_handler(func=lambda message: 
                      message.from_user.id in user_data and 
                      user_data[message.from_user.id].get('step') == 'choose_service')
@@ -145,11 +137,8 @@ def choose_service(message):
     
     user_data[user_id]['service'] = service
     user_data[user_id]['step'] = 'enter_details'
-    
-    text = f"📝 Расскажите подробнее о вашем проекте.\n\nУслуга: {service}\n\nЧто бы вы хотели получить?"
-    safe_send_message(message.chat.id, text)
+    safe_send_message(message.chat.id, f"📝 Расскажите подробнее о проекте.\n\nУслуга: {service}\n\nЧто бы вы хотели получить?")
 
-# Обработчик ввода деталей
 @bot.message_handler(func=lambda message: 
                      message.from_user.id in user_data and 
                      user_data[message.from_user.id].get('step') == 'enter_details')
@@ -159,11 +148,8 @@ def enter_details(message):
     
     user_data[user_id]['details'] = details
     user_data[user_id]['step'] = 'get_contact'
-    
-    text = "📱 Теперь поделитесь вашим контактом для связи:"
-    safe_send_message(message.chat.id, text, create_contact_keyboard())
+    safe_send_message(message.chat.id, "📱 Теперь поделитесь вашим контактом:", create_contact_keyboard())
 
-# Обработчик контакта
 @bot.message_handler(content_types=['contact'])
 def handle_contact(message):
     user_id = message.from_user.id
@@ -197,7 +183,6 @@ def handle_contact(message):
     
     safe_send_message(message.chat.id, order_summary, markup)
 
-# Обработчик подтверждения
 @bot.message_handler(func=lambda message: 
                      message.from_user.id in user_data and 
                      user_data[message.from_user.id].get('step') == 'confirm')
@@ -221,8 +206,8 @@ def confirm_order(message):
         )
         
         if success:
-            response = "✅ Ваша заявка успешно отправлена! Наш менеджер свяжется с вами в ближайшее время."
-            logger.info(f"💾 Заказ сохранен: {user_data[user_id]['service']} от {user_id}")
+            response = "✅ Ваша заявка успешно отправлена! Менеджер свяжется с вами."
+            logger.info(f"💾 Заказ: {user_data[user_id]['service']} от {user_id}")
         else:
             response = "⚠️ Заявка сохранена, но возникла проблема с уведомлением."
         
@@ -236,7 +221,6 @@ def confirm_order(message):
         if user_id in user_data:
             del user_data[user_id]
 
-# Обработчик кнопки "Контакты"
 @bot.message_handler(func=lambda message: message.text == '📞 Контакты')
 def send_contacts(message):
     contacts_text = """
@@ -250,58 +234,38 @@ Telegram: @wedding_site_support
     """
     safe_send_message(message.chat.id, contacts_text)
 
-# Обработчик кнопки "О нас"
 @bot.message_handler(func=lambda message: message.text == 'ℹ️ О нас')
 def about_us(message):
     about_text = """
 🎩 Wedding Site Bot
 
-Мы создаем уникальные свадебные сайты, которые:
-• Рассказывают вашу историю любви
-• Помогают гостям с информацией
-• Принимают поздравления и подарки
-• Интегрируются с социальными сетями
+Мы создаем уникальные свадебные сайты:
+• Рассказываем вашу историю любви
+• Помогаем гостям с информацией
+• Принимаем поздравления
+• Интегрируем с соцсетями
 
-Наши услуги:
-🎯 Создание сайта - от идеи до запуска
-🎨 Дизайн - уникальный стиль для вашей пары
-🚀 Продвижение - привлечение гостей на сайт
-
-Работаем с 2018 года, создали более 500 свадебных сайтов!
+Работаем с 2018 года!
     """
     safe_send_message(message.chat.id, about_text)
 
-# Обработчик всех остальных сообщений
 @bot.message_handler(func=lambda message: True)
 def handle_other_messages(message):
     if message.text:
-        safe_send_message(message.chat.id, 
-                         "Выберите действие из меню ниже 👇", 
-                         create_main_keyboard())
+        safe_send_message(message.chat.id, "Выберите действие из меню 👇", create_main_keyboard())
 
-# ========== FLASK РОУТЫ ДЛЯ RENDER ==========
+# ========== ВЕБ-ХУКИ ==========
 
 @app.route('/')
 def index():
     return f"""
     <html>
-        <head>
-            <title>Wedding Site Bot</title>
-            <style>
-                body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; }}
-                .status {{ color: green; font-size: 24px; }}
-                .info {{ margin-top: 20px; color: #666; }}
-            </style>
-        </head>
-        <body>
-            <h1>🤵👰 Wedding Site Bot</h1>
-            <div class="status">✅ Бот работает!</div>
-            <div class="info">
-                <p>Токен: {TOKEN[:10]}...</p>
-                <p>Админ ID: {ADMIN_CHAT_ID}</p>
-                <p>Порт: {PORT}</p>
-                <p><a href="/health">Проверить здоровье</a></p>
-            </div>
+        <head><title>Wedding Bot</title></head>
+        <body style="text-align: center; padding: 50px;">
+            <h1>🤵👰 Wedding Bot</h1>
+            <p style="color: green; font-size: 24px;">✅ Бот работает через веб-хук!</p>
+            <p>URL: {RENDER_EXTERNAL_URL}</p>
+            <p><a href="/health">Проверить здоровье</a></p>
         </body>
     </html>
     """
@@ -310,8 +274,8 @@ def index():
 def health():
     return 'OK', 200
 
-# Вебхук для телеграма (опционально)
-@app.route('/webhook', methods=['POST'])
+# Веб-хук для Telegram
+@app.route(f'/webhook/{TOKEN}', methods=['POST'])
 def webhook():
     if request.headers.get('content-type') == 'application/json':
         json_string = request.get_data().decode('utf-8')
@@ -320,21 +284,33 @@ def webhook():
         return ''
     return 'Bad request', 400
 
-# Запуск бота в отдельном потоке
-import threading
-def run_bot():
-    logger.info("🤖 Запуск бота...")
+# Настройка веб-хука при старте
+@app.before_first_request
+def setup_webhook():
     try:
-        bot.infinity_polling(timeout=60, long_polling_timeout=30)
+        # Удаляем старый веб-хук
+        bot.remove_webhook()
+        
+        # Устанавливаем новый веб-хук
+        webhook_url = f"{RENDER_EXTERNAL_URL}/webhook/{TOKEN}"
+        bot.set_webhook(url=webhook_url)
+        logger.info(f"✅ Веб-хук установлен: {webhook_url}")
     except Exception as e:
-        logger.error(f"❌ Ошибка бота: {e}")
+        logger.error(f"❌ Ошибка настройки веб-хука: {e}")
 
-# Запускаем бот в отдельном потоке при старте приложения
-bot_thread = threading.Thread(target=run_bot, daemon=True)
-bot_thread.start()
-
-# ========== ЗАПУСК ПРИЛОЖЕНИЯ ==========
+# ========== ЗАПУСК ==========
 
 if __name__ == '__main__':
-    logger.info(f"🚀 Запуск приложения на порту {PORT}")
-    app.run(host='0.0.0.0', port=int(PORT), debug=False)
+    # Настраиваем веб-хук сразу
+    try:
+        bot.remove_webhook()
+        webhook_url = f"{RENDER_EXTERNAL_URL}/webhook/{TOKEN}"
+        bot.set_webhook(url=webhook_url)
+        logger.info(f"🚀 Веб-хук установлен: {webhook_url}")
+    except Exception as e:
+        logger.error(f"⚠️ Ошибка веб-хука: {e}")
+    
+    # Запускаем Flask
+    port = int(PORT)
+    logger.info(f"🌐 Запуск сервера на порту {port}")
+    app.run(host='0.0.0.0', port=port, debug=False)
