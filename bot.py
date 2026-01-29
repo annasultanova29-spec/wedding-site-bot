@@ -4,14 +4,14 @@ from telebot import types
 import sqlite3
 import datetime
 import logging
-from flask import Flask, request
+from flask import Flask
 import time
+import threading  # ДОБАВЬТЕ ЭТО!
 
-# ========== ПРАВИЛЬНАЯ КОНФИГУРАЦИЯ ==========
-import os
-TOKEN = os.environ.get("BOT_TOKEN")
-ADMIN_CHAT_ID = "787419978"          # ВАШ личный ID
-GROUP_CHAT_ID = "-5275786758"        # ID группы для заявок
+# ========== КОНФИГУРАЦИЯ ==========
+TOKEN = os.environ.get("BOT_TOKEN", "ВАШ_ТОКЕН_ЗДЕСЬ")  # Используйте переменную окружения
+ADMIN_CHAT_ID = "787419978"          # Ваш личный ID
+GROUP_CHAT_ID = "-5275786758"        # ID группы
 
 # ========== ИНИЦИАЛИЗАЦИЯ ==========
 logging.basicConfig(
@@ -525,6 +525,24 @@ def home():
 def health():
     return 'OK', 200
 
+# ========== ФУНКЦИИ ЗАПУСКА ==========
+def run_flask():
+    """Запуск Flask сервера"""
+    port = int(os.environ.get('PORT', 10000))
+    logger.info(f"🌐 Запуск Flask на порту {port}")
+    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+
+def run_bot():
+    """Запуск Telegram бота"""
+    logger.info("🤖 Запуск бота...")
+    try:
+        bot.polling(none_stop=True, interval=1, timeout=30)
+    except Exception as e:
+        logger.error(f"❌ Ошибка бота: {e}")
+        logger.info("🔄 Перезапуск через 10 секунд...")
+        time.sleep(10)
+        run_bot()
+
 # ========== ЗАПУСК ==========
 if __name__ == '__main__':
     logger.info("🚀 Бот запускается...")
@@ -534,20 +552,12 @@ if __name__ == '__main__':
     
     init_db()
     
- # ====== ЗАПУСК FLASK В ОТДЕЛЬНОМ ПОТОКЕ ======
-flask_thread = threading.Thread(target=run_flask, daemon=True)
-flask_thread.start()
-
-# Даем Flask время на запуск
-time.sleep(2)
-
-# ====== ЗАПУСК BOTA ======
-logger.info("🤖 Бот готов к работе!")
-
-while True:
-    try:
-        bot.polling(none_stop=True, interval=1, timeout=30)
-    except Exception as e:
-        logger.error(f"❌ Polling упал: {e}")
-        logger.info("⏳ Перезапуск polling через 5 секунд...")
-        time.sleep(5)
+    # ====== ЗАПУСК FLASK В ОТДЕЛЬНОМ ПОТОКЕ ======
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    
+    # Даем Flask время на запуск
+    time.sleep(2)
+    
+    # ====== ЗАПУСК БОТА ======
+    run_bot()
