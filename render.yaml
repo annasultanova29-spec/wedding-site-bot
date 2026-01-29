@@ -2,11 +2,8 @@ services:
   - type: web
     name: wedding-site-bot
     env: python
-    repo: https://github.com/annasultanova29-spec/wedding-site-bot
-    region: frankfurt  # или oregon, если хотите
     buildCommand: pip install -r requirements.txt
-    startCommand: python main.py
-    autoDeploy: true
+    startCommand: python bot.py  # ← ИЗМЕНИТЬ ТУТ!
     envVars:
       - key: TELEGRAM_TOKEN
         value: 8496935356:AAF3UOHTXykrqK6-nOeVFpAPCtewst-02PA
@@ -14,8 +11,3 @@ services:
         value: "787419978"
       - key: PORT
         value: "10000"
-    healthCheckPath: /health
-    disk:
-      name: data
-      mountPath: /data
-      sizeGB: 1
