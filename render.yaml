@@ -1,13 +1,21 @@
 services:
   - type: web
-    name: wedding-bot
+    name: wedding-site-bot
     env: python
+    repo: https://github.com/annasultanova29-spec/wedding-site-bot
+    region: frankfurt  # или oregon, если хотите
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn main:app
+    startCommand: python main.py
+    autoDeploy: true
     envVars:
       - key: TELEGRAM_TOKEN
-        sync: false  # Будет задаваться вручную
+        value: 8496935356:AAF3UOHTXykrqK6-nOeVFpAPCtewst-02PA
       - key: ADMIN_CHAT_ID
-        sync: false  # ID чата для уведомлений (например, -1001234567890)
+        value: "787419978"
       - key: PORT
-        value: 10000
+        value: "10000"
+    healthCheckPath: /health
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1
