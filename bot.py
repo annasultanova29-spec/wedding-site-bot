@@ -15,8 +15,8 @@ logger = logging.getLogger(__name__)
 
 # === ВАШИ ДАННЫЕ ===
 TOKEN = "8496935356:AAF3UOHTXykrqK6-nOeVFpAPCtewst-02PA"
-ADMIN_CHAT_ID = "787419978"  # Ваш личный ID
-GROUP_CHAT_ID = "-5275786758"  # ID группы (если есть)
+ADMIN_CHAT_ID ="-5275786758"# Ваш личный ID
+GROUP_CHAT_ID ="787419978"# ID группы (если есть)
 
 bot = telebot.TeleBot(TOKEN)
 
