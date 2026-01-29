@@ -534,26 +534,20 @@ if __name__ == '__main__':
     
     init_db()
     
-    # Запускаем Flask в отдельном потоке
-    import threading
-    
-    def run_flask():
-        port = int(os.environ.get('PORT', 10000))
-        logger.info(f"🌐 Запуск веб-сервера на порту {port}")
-        app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
-    
-    flask_thread = threading.Thread(target=run_flask, daemon=True)
-    flask_thread.start()
-    
-    # Даем Flask время на запуск
-    time.sleep(2)
-       
-    # Запускаем бота
-    logger.info("🤖 Запуск polling бота...")
+ # ====== ЗАПУСК FLASK В ОТДЕЛЬНОМ ПОТОКЕ ======
+flask_thread = threading.Thread(target=run_flask, daemon=True)
+flask_thread.start()
 
-    while True:
-        try:
-            bot.polling(none_stop=True, timeout=60)
-        except Exception as e:
-            logger.error(f"❌ Polling упал: {e}")
-            time.sleep(5)
+# Даем Flask время на запуск
+time.sleep(2)
+
+# ====== ЗАПУСК BOTA ======
+logger.info("🤖 Бот готов к работе!")
+
+while True:
+    try:
+        bot.polling(none_stop=True, interval=1, timeout=30)
+    except Exception as e:
+        logger.error(f"❌ Polling упал: {e}")
+        logger.info("⏳ Перезапуск polling через 5 секунд...")
+        time.sleep(5)
