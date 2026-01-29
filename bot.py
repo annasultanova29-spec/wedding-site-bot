@@ -549,11 +549,11 @@ if __name__ == '__main__':
     time.sleep(2)
     
     # Запускаем бота
-    try:
-        logger.info("🤖 Запуск polling бота...")
-        bot.polling(none_stop=True, interval=1, timeout=30)
-    except Exception as e:
-        logger.error(f"❌ Ошибка запуска бота: {e}")
-        logger.info("Перезапуск через 10 секунд...")
-        time.sleep(10)
-        bot.polling(none_stop=True, interval=1, timeout=30)
+       logger.info("🤖 Запуск polling бота...")
+
+    while True:
+        try:
+            bot.polling(none_stop=True, timeout=60)
+        except Exception as e:
+            logger.error(f"❌ Polling упал: {e}")
+            time.sleep(5)
