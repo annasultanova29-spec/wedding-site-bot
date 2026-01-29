@@ -15,13 +15,21 @@ logger = logging.getLogger(__name__)
 # Инициализация Flask приложения
 app = Flask(__name__)
 
-# Получение токена из переменных окружения
-TOKEN = os.environ.get('TELEGRAM_TOKEN')
-ADMIN_CHAT_ID = os.environ.get('ADMIN_CHAT_ID', '')  # ID чата для заявок
+# ========== ВАШИ ДАННЫЕ ==========
+# Если переменные окружения не установлены, используем эти значения
+TOKEN = os.environ.get('TELEGRAM_TOKEN', '8496935356:AAF3UOHTXykrqK6-nOeVFpAPCtewst-02PA')
+ADMIN_CHAT_ID = os.environ.get('ADMIN_CHAT_ID', '787419978')
+PORT = os.environ.get('PORT', '10000')
+# =================================
 
-if not TOKEN:
-    logger.error("❌ Токен бота не найден! Установите переменную TELEGRAM_TOKEN")
+# Проверка токена
+if not TOKEN or TOKEN == 'ваш_токен_здесь':
+    logger.error("❌ Токен бота не найден! Проверьте переменную TELEGRAM_TOKEN")
     exit(1)
+
+logger.info(f"✅ Токен бота: {TOKEN[:10]}...")
+logger.info(f"✅ ID администратора: {ADMIN_CHAT_ID}")
+logger.info(f"✅ Порт: {PORT}")
 
 # Инициализация бота
 bot = telebot.TeleBot(TOKEN)
@@ -56,26 +64,18 @@ def create_main_keyboard():
     markup.add(btn_order, btn_contact, btn_about)
     return markup
 
-# Функция для безопасной отправки сообщений (без parse_mode)
+# Функция для безопасной отправки сообщений
 def safe_send_message(chat_id, text, reply_markup=None):
-    """Безопасная отправка сообщения без форматирования"""
     try:
-        # Экранируем HTML-символы чтобы избежать ошибок парсинга
-        safe_text = html.escape(text)
-        bot.send_message(chat_id, safe_text, reply_markup=reply_markup, parse_mode=None)
+        bot.send_message(chat_id, text, reply_markup=reply_markup, parse_mode=None)
         logger.info(f"✅ Сообщение отправлено пользователю {chat_id}")
         return True
     except Exception as e:
-        logger.error(f"❌ Ошибка отправки сообщения: {e}")
+        logger.error(f"❌ Ошибка отправки: {e}")
         return False
 
 # Функция для отправки уведомления администратору
 def send_to_admin(user_id, username, service, contact, details=""):
-    """Отправка заявки администратору"""
-    if not ADMIN_CHAT_ID:
-        logger.warning("⚠️ ADMIN_CHAT_ID не установлен, уведомление не отправлено")
-        return False
-    
     try:
         message = f"""
 📋 НОВАЯ ЗАЯВКА
@@ -86,19 +86,14 @@ def send_to_admin(user_id, username, service, contact, details=""):
 📱 Контакт: {contact}
 📝 Детали: {details if details else 'не указаны'}
 
-Время: {telebot.formatting.hbold('сейчас')}
+⏰ Время: сейчас
         """
         
-        # Отправляем без форматирования, чтобы избежать ошибок
-        bot.send_message(
-            ADMIN_CHAT_ID, 
-            message.replace('**', '').replace('__', ''),  # Убираем Markdown
-            parse_mode=None  # Отключаем форматирование
-        )
+        bot.send_message(ADMIN_CHAT_ID, message, parse_mode=None)
         logger.info(f"✅ Уведомление отправлено администратору {ADMIN_CHAT_ID}")
         return True
     except Exception as e:
-        logger.error(f"❌ Ошибка отправки уведомления администратору: {e}")
+        logger.error(f"❌ Ошибка отправки администратору: {e}")
         return False
 
 # Обработчик команды /start
@@ -126,7 +121,6 @@ def send_welcome(message):
 def start_order(message):
     user_id = message.from_user.id
     
-    # Сохраняем ID пользователя
     if user_id not in user_data:
         user_data[user_id] = {}
     
@@ -149,7 +143,6 @@ def choose_service(message):
             del user_data[user_id]
         return
     
-    # Сохраняем выбранную услугу
     user_data[user_id]['service'] = service
     user_data[user_id]['step'] = 'enter_details'
     
@@ -179,8 +172,6 @@ def handle_contact(message):
         return
     
     contact = message.contact
-    
-    # Формируем контактную информацию
     contact_info = f"{contact.first_name or ''} {contact.last_name or ''}".strip()
     if contact.phone_number:
         contact_info += f"\n📱 Телефон: {contact.phone_number}"
@@ -189,7 +180,6 @@ def handle_contact(message):
     user_data[user_id]['username'] = message.from_user.username or "без username"
     user_data[user_id]['step'] = 'confirm'
     
-    # Показываем сводку заказа
     order_summary = f"""
 📋 Сводка заказа:
 
@@ -200,7 +190,6 @@ def handle_contact(message):
 ✅ Всё верно? Заявка будет отправлена нашему менеджеру.
     """
     
-    # Создаем клавиатуру подтверждения
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     btn_yes = types.KeyboardButton('✅ Да, отправить')
     btn_no = types.KeyboardButton('❌ Нет, изменить')
@@ -223,7 +212,6 @@ def confirm_order(message):
         return
     
     if answer == '✅ Да, отправить':
-        # Отправляем заявку администратору
         success = send_to_admin(
             user_id=user_id,
             username=user_data[user_id]['username'],
@@ -234,13 +222,12 @@ def confirm_order(message):
         
         if success:
             response = "✅ Ваша заявка успешно отправлена! Наш менеджер свяжется с вами в ближайшее время."
-            logger.info(f"💾 Заказ сохранен: {user_data[user_id]['service']} от пользователя {user_id}")
+            logger.info(f"💾 Заказ сохранен: {user_data[user_id]['service']} от {user_id}")
         else:
-            response = "⚠️ Заявка сохранена, но возникла проблема с уведомлением администратора."
+            response = "⚠️ Заявка сохранена, но возникла проблема с уведомлением."
         
         safe_send_message(message.chat.id, response, create_main_keyboard())
         
-        # Очищаем данные пользователя
         if user_id in user_data:
             del user_data[user_id]
     
@@ -296,14 +283,35 @@ def handle_other_messages(message):
 
 @app.route('/')
 def index():
-    return "🤵👰 Wedding Site Bot работает! ✅"
+    return f"""
+    <html>
+        <head>
+            <title>Wedding Site Bot</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; }}
+                .status {{ color: green; font-size: 24px; }}
+                .info {{ margin-top: 20px; color: #666; }}
+            </style>
+        </head>
+        <body>
+            <h1>🤵👰 Wedding Site Bot</h1>
+            <div class="status">✅ Бот работает!</div>
+            <div class="info">
+                <p>Токен: {TOKEN[:10]}...</p>
+                <p>Админ ID: {ADMIN_CHAT_ID}</p>
+                <p>Порт: {PORT}</p>
+                <p><a href="/health">Проверить здоровье</a></p>
+            </div>
+        </body>
+    </html>
+    """
 
 @app.route('/health')
 def health():
     return 'OK', 200
 
-# Webhook endpoint (опционально)
-@app.route(f'/webhook/{TOKEN}', methods=['POST'])
+# Вебхук для телеграма (опционально)
+@app.route('/webhook', methods=['POST'])
 def webhook():
     if request.headers.get('content-type') == 'application/json':
         json_string = request.get_data().decode('utf-8')
@@ -312,24 +320,21 @@ def webhook():
         return ''
     return 'Bad request', 400
 
-# Polling endpoint для запуска бота
-@app.route('/start_bot', methods=['POST'])
-def start_bot_polling():
+# Запуск бота в отдельном потоке
+import threading
+def run_bot():
+    logger.info("🤖 Запуск бота...")
     try:
-        bot.remove_webhook()
-        bot.polling(none_stop=True, timeout=60)
-        return 'Bot started', 200
+        bot.infinity_polling(timeout=60, long_polling_timeout=30)
     except Exception as e:
-        logger.error(f"Error starting bot: {e}")
-        return f'Error: {e}', 500
+        logger.error(f"❌ Ошибка бота: {e}")
+
+# Запускаем бот в отдельном потоке при старте приложения
+bot_thread = threading.Thread(target=run_bot, daemon=True)
+bot_thread.start()
 
 # ========== ЗАПУСК ПРИЛОЖЕНИЯ ==========
 
 if __name__ == '__main__':
-    # Получаем порт из переменных окружения Render
-    port = int(os.environ.get('PORT', 5000))
-    
-    logger.info(f"🚀 Запуск бота на порту {port}")
-    
-    # Запускаем Flask приложение
-    app.run(host='0.0.0.0', port=port)
+    logger.info(f"🚀 Запуск приложения на порту {PORT}")
+    app.run(host='0.0.0.0', port=int(PORT), debug=False)
