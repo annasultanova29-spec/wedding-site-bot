@@ -1,13 +1,13 @@
 services:
-  - type: worker  # ← ИЗМЕНИ НА worker!
+  - type: web
     name: wedding-bot
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: python bot.py
+    startCommand: gunicorn main:app
     envVars:
-      - key: TOKEN
-        value: "8496935356:AAF3UOHTXykrqK6-nOeVFpAPCtewst-02PA"
+      - key: TELEGRAM_TOKEN
+        sync: false  # Будет задаваться вручную
       - key: ADMIN_CHAT_ID
-        value: "787419978"
-      - key: GROUP_CHAT_ID
-        value: "-5275786758"
+        sync: false  # ID чата для уведомлений (например, -1001234567890)
+      - key: PORT
+        value: 10000
