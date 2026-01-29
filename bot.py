@@ -8,7 +8,7 @@ from flask import Flask, request
 import time
 
 # ========== ПРАВИЛЬНАЯ КОНФИГУРАЦИЯ ==========
-TOKEN = "8496935356:AAF3UOHTXykrqK6-nOeVFpAPCtewst-02PA"
+TOKEN = "8496935356:AAEB6niHyvdSUJCsOETT5kQb-PAWwHhCvrs"
 ADMIN_CHAT_ID = "787419978"          # ВАШ личный ID
 GROUP_CHAT_ID = "-5275786758"        # ID группы для заявок
 
