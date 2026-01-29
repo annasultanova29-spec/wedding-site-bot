@@ -8,7 +8,8 @@ from flask import Flask, request
 import time
 
 # ========== ПРАВИЛЬНАЯ КОНФИГУРАЦИЯ ==========
-TOKEN = "8496935356:AAEB6niHyvdSUJCsOETT5kQb-PAWwHhCvrs"
+import os
+TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_CHAT_ID = "787419978"          # ВАШ личный ID
 GROUP_CHAT_ID = "-5275786758"        # ID группы для заявок
 
