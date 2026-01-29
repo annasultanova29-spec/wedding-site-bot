@@ -482,8 +482,8 @@ if __name__ == '__main__':
     flask_thread.start()
     
     # Запускаем бота
-    try:
-     bot.delete_webhook(drop_pending_updates=True)
-bot.polling(none_stop=True, timeout=60)
+     try:
+        bot.delete_webhook(drop_pending_updates=True)
+        bot.polling(none_stop=True, timeout=60)
     except Exception as e:
         logger.error(f"❌ Ошибка запуска бота: {e}")
