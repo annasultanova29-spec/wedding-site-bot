@@ -483,6 +483,7 @@ if __name__ == '__main__':
     
     # Запускаем бота
     try:
-        bot.polling(none_stop=True, interval=0, timeout=60)
+     bot.delete_webhook(drop_pending_updates=True)
+bot.polling(none_stop=True, timeout=60)
     except Exception as e:
         logger.error(f"❌ Ошибка запуска бота: {e}")
