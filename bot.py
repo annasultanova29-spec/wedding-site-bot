@@ -1,9 +1,10 @@
+import telebot
+from telebot import types
+import sqlite3
+import datetime
 import os
 import logging
-import telebot
-from flask import Flask, request
-from telebot import types
-import html
+from flask import Flask
 
 # Настройка логирования
 logging.basicConfig(
@@ -12,260 +13,446 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Инициализация Flask приложения
-app = Flask(__name__)
+# === ВАШИ ДАННЫЕ ===
+TOKEN = "8496935356:AAF3UOHTXykrqK6-nOeVFpAPCtewst-02PA"
+ADMIN_CHAT_ID = "787419978"  # Ваш личный ID
+GROUP_CHAT_ID = "-5275786758"  # ID группы (если есть)
 
-# ========== ВАШИ ДАННЫЕ ==========
-TOKEN = os.environ.get('TELEGRAM_TOKEN', '8496935356:AAF3UOHTXykrqK6-nOeVFpAPCtewst-02PA')
-ADMIN_CHAT_ID = os.environ.get('ADMIN_CHAT_ID', '787419978')
-PORT = os.environ.get('PORT', '10000')
-# =================================
-
-# Получаем URL Render
-RENDER_EXTERNAL_URL = os.environ.get('RENDER_EXTERNAL_URL', '')
-if not RENDER_EXTERNAL_URL:
-    # Формируем URL из имени сервиса
-    service_name = os.environ.get('RENDER_SERVICE_NAME', 'wedding-site-bot')
-    RENDER_EXTERNAL_URL = f"https://{service_name}.onrender.com"
-
-logger.info(f"✅ URL: {RENDER_EXTERNAL_URL}")
-logger.info(f"✅ Токен: {TOKEN[:10]}...")
-logger.info(f"✅ Админ: {ADMIN_CHAT_ID}")
-
-# Инициализация бота
 bot = telebot.TeleBot(TOKEN)
 
-# Глобальные переменные для хранения данных пользователей
-user_data = {}
+# База данных
+def init_db():
+    conn = sqlite3.connect('orders.db')
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS orders
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  name TEXT,
+                  telegram TEXT,
+                  phone TEXT,
+                  wedding_date TEXT,
+                  created_date TIMESTAMP,
+                  consent INTEGER DEFAULT 0,
+                  user_id INTEGER)''')
+    conn.commit()
+    conn.close()
+    logger.info("✅ База данных готова")
 
-# ========== КЛАВИАТУРЫ ==========
-def create_service_keyboard():
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    btn1 = types.KeyboardButton('Создание сайта')
-    btn2 = types.KeyboardButton('Дизайн')
-    btn3 = types.KeyboardButton('Продвижение')
-    btn4 = types.KeyboardButton('Другое')
-    markup.add(btn1, btn2, btn3, btn4)
-    return markup
-
-def create_contact_keyboard():
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
-    btn_contact = types.KeyboardButton('📱 Отправить контакт', request_contact=True)
-    btn_cancel = types.KeyboardButton('❌ Отмена')
-    markup.add(btn_contact, btn_cancel)
-    return markup
-
-def create_main_keyboard():
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    btn_order = types.KeyboardButton('🎉 Оформить заказ')
-    btn_contact = types.KeyboardButton('📞 Контакты')
-    btn_about = types.KeyboardButton('ℹ️ О нас')
-    markup.add(btn_order, btn_contact, btn_about)
-    return markup
-
-# ========== ФУНКЦИИ ==========
-def safe_send_message(chat_id, text, reply_markup=None):
-    try:
-        bot.send_message(chat_id, text, reply_markup=reply_markup, parse_mode=None)
-        logger.info(f"✅ Сообщение отправлено {chat_id}")
-        return True
-    except Exception as e:
-        logger.error(f"❌ Ошибка: {e}")
-        return False
-
-def send_to_admin(user_id, username, service, contact, details=""):
-    try:
-        message = f"""
-📋 НОВАЯ ЗАЯВКА
-
-👤 Пользователь: @{username if username else 'без username'}
-🆔 ID: {user_id}
-🎯 Услуга: {service}
-📱 Контакт: {contact}
-📝 Детали: {details if details else 'не указаны'}
-
-⏰ Время: сейчас
-        """
-        
-        bot.send_message(ADMIN_CHAT_ID, message, parse_mode=None)
-        logger.info(f"✅ Уведомление отправлено администратору")
-        return True
-    except Exception as e:
-        logger.error(f"❌ Ошибка отправки: {e}")
-        return False
-
-# ========== ОБРАБОТЧИКИ ==========
+# Команда /start
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     user_id = message.from_user.id
     username = message.from_user.username
     logger.info(f"👤 Пользователь {user_id} (@{username}) начал диалог")
     
-    welcome_text = """
-🎉 Добро пожаловать в Wedding Site Bot!
-
-Выберите действие:
-🎉 Оформить заказ - оставить заявку
-📞 Контакты - связаться с нами
-ℹ️ О нас - узнать подробнее
-    """
+    # Если переход с сайта
+    if len(message.text.split()) > 1:
+        param = message.text.split()[1]
+        if param == 'siteorder':
+            logger.info(f"🌐 Переход с сайта от {user_id}")
+            start_order(message)
+            return
     
-    safe_send_message(message.chat.id, welcome_text, create_main_keyboard())
+    # Главное меню
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    btn_order = types.KeyboardButton('🎯 Заказать сайт')
+    btn_privacy = types.KeyboardButton('🔒 Политика')
+    btn_examples = types.KeyboardButton('✨ Примеры работ')
+    btn_price = types.KeyboardButton('💰 Стоимость')
+    markup.add(btn_order, btn_privacy, btn_examples, btn_price)
+    
+    welcome_text = """🎉 Добро пожаловать!
 
-@bot.message_handler(func=lambda message: message.text == '🎉 Оформить заказ')
+Я Анна, и я создаю свадебные сайты-приглашения 
+такие же, как у Татьяны и Александра!
+
+✨ Что входит в сайт:
+• Адаптивный дизайн (для телефонов и компьютеров)
+• Таймер обратного отсчета
+• Анкета для гостей (RSVP)
+• История любви с фотографиями
+• Программа мероприятия
+• Карты и контакты
+• Фоновая музыка и видео
+
+⏱ Срок создания: 2-3 дня
+💝 Стоимость: от 5000 рублей
+
+Выберите действие: ⬇️"""
+    
+    bot.send_message(message.chat.id, welcome_text, reply_markup=markup, parse_mode=None)
+
+# Главное меню
+@bot.message_handler(func=lambda message: message.text in [
+    '🎯 Заказать сайт', '🔒 Политика', '✨ Примеры работ', '💰 Стоимость'
+])
+def handle_main_menu(message):
+    if message.text == '🎯 Заказать сайт':
+        start_order(message)
+    elif message.text == '🔒 Политика':
+        send_privacy(message)
+    elif message.text == '✨ Примеры работ':
+        send_examples(message)
+    elif message.text == '💰 Стоимость':
+        send_price(message)
+
 def start_order(message):
-    user_id = message.from_user.id
-    
-    if user_id not in user_data:
-        user_data[user_id] = {}
-    
-    user_data[user_id]['step'] = 'choose_service'
-    safe_send_message(message.chat.id, "🎯 Выберите услугу:", create_service_keyboard())
+    msg = bot.send_message(
+        message.chat.id,
+        "📋 АНКЕТА ДЛЯ ЗАКАЗА\n\n"
+        "Заполните 4 простых поля, и я свяжусь с вами "
+        "в течение 24 часов!\n\n"
+        "🔹 Шаг 1 из 4\n"
+        "Напишите ваше имя и фамилию:",
+        reply_markup=types.ReplyKeyboardRemove(),
+        parse_mode=None
+    )
+    bot.register_next_step_handler(msg, process_name_step)
 
-@bot.message_handler(func=lambda message: 
-                     message.from_user.id in user_data and 
-                     user_data[message.from_user.id].get('step') == 'choose_service')
-def choose_service(message):
-    user_id = message.from_user.id
-    service = message.text
-    
-    if service == '❌ Отмена':
-        safe_send_message(message.chat.id, "Заказ отменен.", create_main_keyboard())
-        if user_id in user_data:
-            del user_data[user_id]
-        return
-    
-    user_data[user_id]['service'] = service
-    user_data[user_id]['step'] = 'enter_details'
-    safe_send_message(message.chat.id, f"📝 Расскажите подробнее о проекте.\n\nУслуга: {service}\n\nЧто бы вы хотели получить?")
-
-@bot.message_handler(func=lambda message: 
-                     message.from_user.id in user_data and 
-                     user_data[message.from_user.id].get('step') == 'enter_details')
-def enter_details(message):
-    user_id = message.from_user.id
-    details = message.text
-    
-    user_data[user_id]['details'] = details
-    user_data[user_id]['step'] = 'get_contact'
-    safe_send_message(message.chat.id, "📱 Теперь поделитесь вашим контактом:", create_contact_keyboard())
+def process_name_step(message):
+    try:
+        name = message.text.strip()
+        if len(name) < 2:
+            bot.send_message(message.chat.id, 
+                           "❌ Имя слишком короткое. Введите имя и фамилию:",
+                           parse_mode=None)
+            bot.register_next_step_handler(message, process_name_step)
+            return
+            
+        user_data = {
+            'name': name, 
+            'user_id': message.from_user.id,
+            'username': message.from_user.username
+        }
+        
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add(types.KeyboardButton('📱 Поделиться телефоном', request_contact=True))
+        
+        msg = bot.send_message(
+            message.chat.id,
+            f"👤 Имя: {name}\n\n"
+            "🔹 Шаг 2 из 4\n"
+            "Нажмите кнопку ниже, чтобы поделиться номером телефона, "
+            "или напишите номер вручную (в формате +7 XXX XXX-XX-XX):",
+            reply_markup=markup,
+            parse_mode=None
+        )
+        bot.register_next_step_handler(msg, process_phone_step, user_data)
+    except Exception as e:
+        logger.error(f"❌ Ошибка в имени: {e}")
+        bot.send_message(message.chat.id, 
+                        "❌ Что-то пошло не так. Начнем заново /start",
+                        parse_mode=None)
 
 @bot.message_handler(content_types=['contact'])
 def handle_contact(message):
-    user_id = message.from_user.id
-    
-    if user_id not in user_data or user_data[user_id].get('step') != 'get_contact':
-        return
-    
-    contact = message.contact
-    contact_info = f"{contact.first_name or ''} {contact.last_name or ''}".strip()
-    if contact.phone_number:
-        contact_info += f"\n📱 Телефон: {contact.phone_number}"
-    
-    user_data[user_id]['contact'] = contact_info
-    user_data[user_id]['username'] = message.from_user.username or "без username"
-    user_data[user_id]['step'] = 'confirm'
-    
-    order_summary = f"""
-📋 Сводка заказа:
+    if hasattr(message, 'contact') and message.contact:
+        phone = message.contact.phone_number
+        user_data = {
+            'name': 'Не указано',
+            'user_id': message.from_user.id,
+            'username': message.from_user.username
+        }
+        user_data['phone'] = phone
+        ask_telegram(message, user_data)
 
-🎯 Услуга: {user_data[user_id]['service']}
-📝 Детали: {user_data[user_id]['details']}
-👤 Контакт: {contact_info}
+def process_phone_step(message, user_data):
+    try:
+        if hasattr(message, 'contact') and message.contact:
+            phone = message.contact.phone_number
+        else:
+            phone = message.text.strip()
+            
+        if not phone:
+            bot.send_message(message.chat.id, 
+                           "❌ Введите номер телефона:",
+                           parse_mode=None)
+            bot.register_next_step_handler(message, process_phone_step, user_data)
+            return
+            
+        user_data['phone'] = phone
+        ask_telegram(message, user_data)
+    except Exception as e:
+        logger.error(f"❌ Ошибка в телефоне: {e}")
 
-✅ Всё верно? Заявка будет отправлена нашему менеджеру.
-    """
+def ask_telegram(message, user_data):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add(types.KeyboardButton('➡️ Пропустить'))
     
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    btn_yes = types.KeyboardButton('✅ Да, отправить')
-    btn_no = types.KeyboardButton('❌ Нет, изменить')
-    markup.add(btn_yes, btn_no)
-    
-    safe_send_message(message.chat.id, order_summary, markup)
+    msg = bot.send_message(
+        message.chat.id,
+        f"📱 Телефон: {user_data['phone']}\n\n"
+        "🔹 Шаг 3 из 4\n"
+        "Укажите ваш Telegram username (например, @username):\n"
+        "Можно пропустить, нажав кнопку ниже",
+        reply_markup=markup,
+        parse_mode=None
+    )
+    bot.register_next_step_handler(msg, process_telegram_step, user_data)
 
-@bot.message_handler(func=lambda message: 
-                     message.from_user.id in user_data and 
-                     user_data[message.from_user.id].get('step') == 'confirm')
-def confirm_order(message):
-    user_id = message.from_user.id
-    answer = message.text
-    
-    if answer == '❌ Нет, изменить':
-        safe_send_message(message.chat.id, "Начнем заново.", create_main_keyboard())
-        if user_id in user_data:
-            del user_data[user_id]
-        return
-    
-    if answer == '✅ Да, отправить':
-        success = send_to_admin(
-            user_id=user_id,
-            username=user_data[user_id]['username'],
-            service=user_data[user_id]['service'],
-            contact=user_data[user_id]['contact'],
-            details=user_data[user_id]['details']
+def process_telegram_step(message, user_data):
+    try:
+        telegram = message.text.strip() 
+        if telegram == '➡️ Пропустить':
+            telegram = 'Не указан'
+        elif not telegram.startswith('@'):
+            telegram = f"@{telegram}"
+            
+        user_data['telegram'] = telegram
+        
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+        years = ['2025', '2026', '2027', '2028', 'Еще не знаю']
+        for year in years:
+            markup.add(types.KeyboardButton(year))
+        
+        msg = bot.send_message(
+            message.chat.id,
+            f"📲 Telegram: {telegram}\n\n"
+            "🔹 Шаг 4 из 4\n"
+            "Выберите год свадьбы:",
+            reply_markup=markup,
+            parse_mode=None
+        )
+        bot.register_next_step_handler(msg, process_date_step, user_data)
+    except Exception as e:
+        logger.error(f"❌ Ошибка в Telegram: {e}")
+
+def process_date_step(message, user_data):
+    try:
+        wedding_date = message.text.strip()
+        user_data['wedding_date'] = wedding_date
+        
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+        markup.add(
+            types.KeyboardButton('✅ Да, согласен'),
+            types.KeyboardButton('❌ Нет, отменить')
         )
         
-        if success:
-            response = "✅ Ваша заявка успешно отправлена! Менеджер свяжется с вами."
-            logger.info(f"💾 Заказ: {user_data[user_id]['service']} от {user_id}")
+        summary = f"""📋 ПРОВЕРЬТЕ ВАШИ ДАННЫЕ:
+
+👤 Имя: {user_data['name']}
+📱 Телефон: {user_data['phone']}
+📲 Telegram: {user_data['telegram']}
+📅 Год свадьбы: {wedding_date}
+
+🔒 СОГЛАСИЕ НА ОБРАБОТКУ ДАННЫХ:
+Я согласен на обработку моих персональных данных 
+в соответствии с Федеральным законом №152-ФЗ 
+для связи и обсуждения заказа.
+
+Подтверждаете отправку заявки?"""
+        
+        bot.send_message(message.chat.id, summary, reply_markup=markup, parse_mode=None)
+        bot.register_next_step_handler(message, process_consent_step, user_data)
+    except Exception as e:
+        logger.error(f"❌ Ошибка в дате: {e}")
+
+def process_consent_step(message, user_data):
+    try:
+        if message.text == '✅ Да, согласен':
+            save_order(user_data)
+            notify_admin(user_data, message.from_user.username)
+            
+            success_text = f"""🎉 {user_data['name']}, ВАША ЗАЯВКА ПРИНЯТА!
+
+✅ Спасибо за доверие!
+⏱ Я свяжусь с вами в течение 24 часов.
+
+📞 Мои контакты для связи:
+Telegram: @ami_sultanova
+До скорой встречи! ✨"""
+            
+            bot.send_message(message.chat.id, success_text, 
+                           reply_markup=types.ReplyKeyboardRemove(),
+                           parse_mode=None)
+            logger.info(f"✅ Новый заказ от {user_data['name']}")
         else:
-            response = "⚠️ Заявка сохранена, но возникла проблема с уведомлением."
+            bot.send_message(message.chat.id,
+                           "❌ Заказ отменен.\n\n"
+                           "Если передумаете — нажмите /start",
+                           reply_markup=types.ReplyKeyboardRemove(),
+                           parse_mode=None)
+    except Exception as e:
+        logger.error(f"❌ Ошибка подтверждения: {e}")
+
+def save_order(data):
+    try:
+        conn = sqlite3.connect('orders.db')
+        c = conn.cursor()
+        c.execute('''INSERT INTO orders 
+                     (name, telegram, phone, wedding_date, created_date, consent, user_id) 
+                     VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                  (data['name'], data['telegram'], data['phone'], 
+                   data['wedding_date'], datetime.datetime.now(), 1, 
+                   data['user_id']))
+        conn.commit()
+        conn.close()
+        logger.info(f"💾 Заказ сохранен в БД: {data['name']}")
+    except Exception as e:
+        logger.error(f"❌ Ошибка сохранения: {e}")
+
+def notify_admin(data, username):
+    try:
+        timestamp = datetime.datetime.now().strftime('%H:%M %d.%m.%Y')
         
-        safe_send_message(message.chat.id, response, create_main_keyboard())
+        # Убираем все Markdown символы, чтобы не было ошибок
+        message = f"""🎯 НОВЫЙ ЗАКАЗ САЙТА!
+
+👤 Имя: {data['name']}
+📱 Телефон: {data['phone']}
+📲 Telegram: {data['telegram']}
+📅 Год свадьбы: {data['wedding_date']}
+🆔 Username: @{username if username else 'нет'}
+🆔 User ID: {data['user_id']}
+⏰ Время: {timestamp}
+
+заказсайт"""
         
-        if user_id in user_data:
-            del user_data[user_id]
-    
-    elif answer == '❌ Отмена':
-        safe_send_message(message.chat.id, "Заказ отменен.", create_main_keyboard())
-        if user_id in user_data:
-            del user_data[user_id]
+        # Отправляем ТОЛЬКО вам (ADMIN_CHAT_ID = 787419978)
+        bot.send_message(ADMIN_CHAT_ID, message, parse_mode=None)
+        
+        logger.info(f"📨 Уведомление отправлено администратору")
+    except Exception as e:
+        logger.error(f"❌ Ошибка уведомления: {e}")
 
-@bot.message_handler(func=lambda message: message.text == '📞 Контакты')
-def send_contacts(message):
-    contacts_text = """
-📞 Наши контакты:
+def send_privacy(message):
+    privacy_text = """🔒 ПОЛИТИКА КОНФИДЕНЦИАЛЬНОСТИ
 
-Email: info@wedding-site.ru
-Телефон: +7 (999) 123-45-67
-Telegram: @wedding_site_support
+1. Общие положения
+Мы соблюдаем требования Федерального закона №152-ФЗ 
+"О персональных данных".
 
-📍 Мы работаем с 10:00 до 20:00 по МСК
-    """
-    safe_send_message(message.chat.id, contacts_text)
+2. Какие данные собираем:
+• Имя и фамилия
+• Номер телефона
+• Telegram username
+• Планируемая дата свадьбы
 
-@bot.message_handler(func=lambda message: message.text == 'ℹ️ О нас')
-def about_us(message):
-    about_text = """
-🎩 Wedding Site Bot
+3. Для чего используем:
+• Для связи с вами
+• Для обсуждения деталей заказа
+• Для подготовки коммерческого предложения
 
-Мы создаем уникальные свадебные сайты:
-• Рассказываем вашу историю любви
-• Помогаем гостям с информацией
-• Принимаем поздравления
-• Интегрируем с соцсетями
+4. Срок хранения:
+6 месяцев с момента получения
 
-Работаем с 2018 года!
-    """
-    safe_send_message(message.chat.id, about_text)
+5. Ваши права:
+• Право на доступ к данным
+• Право на исправление
+• Право на удаление данных
+• Право на отзыв согласия
 
+6. Контакты:
+По вопросам обработки данных обращайтесь:
+Telegram: @ami_sultanova"""
+    bot.send_message(message.chat.id, privacy_text, parse_mode=None)
+
+def send_examples(message):
+    examples_text = """✨ ПРИМЕРЫ РАБОТ:
+
+1. Свадьба Татьяны и Александра
+   (пример, который вы видели)
+
+2. Свадьба в стиле "Винтаж"
+   - Пастельные тона
+   - Старинные фотографии
+   - Классическая музыка
+
+3. Современная свадьба
+   - Яркие цвета
+   - Анимации
+   - Интерактивные элементы
+
+Каждый сайт уникален! 
+Я создам дизайн специально под вашу пару."""
+    bot.send_message(message.chat.id, examples_text, parse_mode=None)
+
+def send_price(message):
+    price_text = """💰 СТОИМОСТЬ И УСЛУГИ:
+
+БАЗОВЫЙ ПАКЕТ (5000 руб.):
+✅ Адаптивный дизайн
+✅ 6 основных разделов
+✅ Форма для гостей
+✅ Таймер обратного отсчета
+✅ До 20 фотографий
+✅ Поддержка 7 дней
+
+ПРЕМИУМ ПАКЕТ (8000 руб.):
+✅ Всё из базового пакета
+✅ Видео-фон на главной
+✅ Анимации и эффекты
+✅ Интеграция с музыкой
+✅ Индивидуальный дизайн
+✅ Поддержка 30 дней
+
+СРОКИ:
+• Базовая версия: 2-3 дня
+• Премиум версия: 3-5 дней
+
+ОПЛАТА:
+50% предоплата, 50% после готовности"""
+    bot.send_message(message.chat.id, price_text, parse_mode=None)
+
+# Обработка остальных сообщений
 @bot.message_handler(func=lambda message: True)
 def handle_other_messages(message):
-    if message.text:
-        safe_send_message(message.chat.id, "Выберите действие из меню 👇", create_main_keyboard())
+    bot.send_message(
+        message.chat.id,
+        "Используйте кнопки меню:\n"
+        "🎯 Заказать сайт - начать оформление\n"
+        "🔒 Политика - конфиденциальность\n"
+        "✨ Примеры работ - наши проекты\n"
+        "💰 Стоимость - цены и пакеты\n\n"
+        "Или команды:\n"
+        "/start - перезапустить бота\n"
+        "/order - заказать сайт\n"
+        "/privacy - политика",
+        parse_mode=None
+    )
 
-# ========== ВЕБ-ХУКИ ==========
+# ========== Flask для Render ==========
+
+app = Flask(__name__)
 
 @app.route('/')
-def index():
-    return f"""
+def home():
+    return """
     <html>
-        <head><title>Wedding Bot</title></head>
-        <body style="text-align: center; padding: 50px;">
-            <h1>🤵👰 Wedding Bot</h1>
-            <p style="color: green; font-size: 24px;">✅ Бот работает через веб-хук!</p>
-            <p>URL: {RENDER_EXTERNAL_URL}</p>
-            <p><a href="/health">Проверить здоровье</a></p>
+        <head>
+            <title>Wedding Site Bot</title>
+            <style>
+                body {
+                    font-family: Arial, sans-serif;
+                    text-align: center;
+                    padding: 50px;
+                    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+                }
+                .container {
+                    max-width: 600px;
+                    margin: 0 auto;
+                    background: white;
+                    padding: 30px;
+                    border-radius: 15px;
+                    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+                }
+                .status {
+                    color: green;
+                    font-size: 24px;
+                    font-weight: bold;
+                }
+                .heart {
+                    color: #ff4081;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>🤵<span class="heart">💍</span>👰 Wedding Site Bot</h1>
+                <div class="status">✅ Бот активен и работает!</div>
+                <p>Бот для создания свадебных сайтов-приглашений</p>
+                <p>Все заявки приходят прямо администратору</p>
+                <p><a href="/health" style="color: #4CAF50;">🩺 Проверить здоровье системы</a></p>
+            </div>
         </body>
     </html>
     """
@@ -274,43 +461,28 @@ def index():
 def health():
     return 'OK', 200
 
-# Веб-хук для Telegram
-@app.route(f'/webhook/{TOKEN}', methods=['POST'])
-def webhook():
-    if request.headers.get('content-type') == 'application/json':
-        json_string = request.get_data().decode('utf-8')
-        update = telebot.types.Update.de_json(json_string)
-        bot.process_new_updates([update])
-        return ''
-    return 'Bad request', 400
-
-# Настройка веб-хука при старте
-@app.before_first_request
-def setup_webhook():
-    try:
-        # Удаляем старый веб-хук
-        bot.remove_webhook()
-        
-        # Устанавливаем новый веб-хук
-        webhook_url = f"{RENDER_EXTERNAL_URL}/webhook/{TOKEN}"
-        bot.set_webhook(url=webhook_url)
-        logger.info(f"✅ Веб-хук установлен: {webhook_url}")
-    except Exception as e:
-        logger.error(f"❌ Ошибка настройки веб-хука: {e}")
-
 # ========== ЗАПУСК ==========
 
 if __name__ == '__main__':
-    # Настраиваем веб-хук сразу
-    try:
-        bot.remove_webhook()
-        webhook_url = f"{RENDER_EXTERNAL_URL}/webhook/{TOKEN}"
-        bot.set_webhook(url=webhook_url)
-        logger.info(f"🚀 Веб-хук установлен: {webhook_url}")
-    except Exception as e:
-        logger.error(f"⚠️ Ошибка веб-хука: {e}")
+    logger.info("🚀 Бот запускается...")
+    logger.info(f"🤖 Токен: {TOKEN[:10]}...")
+    logger.info(f"👑 Администратор (Вы): {ADMIN_CHAT_ID}")
     
-    # Запускаем Flask
-    port = int(PORT)
-    logger.info(f"🌐 Запуск сервера на порту {port}")
-    app.run(host='0.0.0.0', port=port, debug=False)
+    init_db()
+    
+    # Запускаем Flask в отдельном потоке
+    import threading
+    
+    def run_flask():
+        port = int(os.environ.get("PORT", 10000))
+        logger.info(f"🌐 Запуск веб-сервера на порту {port}")
+        app.run(host='0.0.0.0', port=port, debug=False)
+    
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    
+    # Запускаем бота
+    try:
+        bot.polling(none_stop=True, interval=0, timeout=60)
+    except Exception as e:
+        logger.error(f"❌ Ошибка запуска бота: {e}")
