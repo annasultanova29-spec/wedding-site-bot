@@ -1,2 +1,4 @@
 telebot==0.0.5
 Flask==2.3.3
+pyTelegramBotAPI==4.30.0
+gunicorn==20.1.0
